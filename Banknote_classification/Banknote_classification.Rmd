@@ -1,0 +1,372 @@
+---
+title: Forged Banknotes Detection with multiple logistic regression analysis linear
+  discriminant analysis (LDA) and quadratic discriminant analysis (QDA)
+author: "Hieu Nguyen"
+---
+```{r, echo = FALSE,include=FALSE}
+require(MASS)
+require(ROCR)
+require(magrittr)
+require(lattice)
+require(ggplot2)
+require(arules)
+```
+
+# Multiple Logistic Regression Analysis
+
+First, we will fit a logistic regression model to predict the probability of a banknote being forged using the Banknote data set. This data has been divided into training and testing sets: BankTrain.csv and BankTest.csv. The response variable is y (the fifth column), where y = 1 denotes a forged banknote and y = 0 denotes a genuine banknote. $~$
+
+After train the model, we have model summary as below:
+
+```{r,echo = FALSE,comment=NA}
+b.train= read.csv("BankTrain.csv")
+train.model <- glm(y~x1+x3,family=binomial,data=b.train)
+summary(train.model)
+```
+
+$~$ 
+
+We was given that x1 is the variance of a Wavelet Transformed image and x3 is the kurtosis of a Wavelet Transformed image, and y is type of banknote, genuine = 0 and forged = 1.
+
+$~$ 
+
+Based on the summary of our training model, we can see both Variance(x1) and Kurtosis(x3) influence type of banknote negatively, especially the Variance. That's mean higher values of Variance and Kurtosis are associated with higher likelihood of the type of banknote (y) taking on value of 0 (genuine banknote). Besides, both 2 factors has statistical significant coefficient as they both have p-score \< 0.001, and very close to 0.
+
+$~$
+
+While null deviance tells us how well the type of banknote (y) can be predicted by a model with only an intercept, and the residual deviance tells us how well the y can be predicted by our model fit with 2 predictor variables. By using the deviance and degrees of freedom, we can perform Goodness Of Fit (GOF) test, compute p-value of both 2 cases, model with only intercept and model with 2 predictor variables:
+
+$~$ 
+
+Null deviance: 1322.01, 959 degrees of freedom, p-value = `r 1-pchisq(1322.01,959)`
+
+Residual deviance: 572.07, 957 degrees of freedom, p-value = `r 1-pchisq(572.07,957)`
+
+$~$
+
+Our model with 2 predictor variables has p-value = 1, means it fit extremely well and no significant difference between the model and the observed data.
+
+$~$
+
+**We are going to classify observations using following function**
+
+$$
+f(x)= \begin{cases}\text { forged banknote } & \text { if } \operatorname{Pr}(Y=1 \mid X=x)>\theta \\ \text { genuine banknote } & \text { otherwise. }\end{cases}
+$$ **With the decision boundary** $\theta=0.5$
+
+```{r, echo = FALSE,fig.asp=1}
+
+slope = coef(train.model)[2]/(-coef(train.model)[3])
+intercept = coef(train.model)[1]/(-coef(train.model)[3])
+
+b.train.p = b.train
+colnames(b.train.p) = c("Variance", "","Kurtosis","","Banknote")
+X = b.train.p[ , -4:-5]
+X = X[,-2]
+Y = b.train.p[,5]
+
+plot( X$Variance,  X$Kurtosis,
+      asp = 0,
+      xlab = "Variance", ylab = "Kurtosis",
+      col= c("cornflowerblue","darkorange")[as.factor(Y)], 
+      pch= c(1, 5)[as.factor(Y)],
+      main= "Training data and decision boundary")
+ 
+abline(intercept, slope, col = "black", lwd = 1.5)
+
+polygon(x=c(2,-4,-9,-9),y=c(-11.083472,25.208704,55.452184,-11), 
+        col = adjustcolor("darkorange",alpha.f=0.05))
+
+polygon(x=c(2,-4,9,9),y=c(-11.083472,25.208704,20,-10), 
+        col = adjustcolor("cornflowerblue",alpha.f=0.07))
+
+
+legend ("topright",
+       legend = c("Genuine banknote", "Forged banknote", "Decision boundary"),
+       col = c("cornflowerblue","darkorange","black"),
+       pch = c(1,5,NA),
+       lty =c( 0,0,1),
+       text.col = "black",
+       bg = "white",
+       horiz = FALSE
+       )
+
+```
+
+**Using** $\theta=0.5$, **we have the confusion matrix for the testing set as follow**
+
+```{r,echo = FALSE}
+b.test = read.csv("BankTest.csv")
+
+#Confusion matrix
+fit.glm = predict(train.model, newdata=b.test, type="response")
+conf.matrix = table(ifelse( fit.glm > 0.5, "**Forged**", "**Genuine**"),b.test$y)
+colnames(conf.matrix) = c("Genuine","Forged")
+
+
+knitr::kable(conf.matrix, escape = FALSE, booktabs = TRUE,caption = "Confusion matrix - threshold = 0.5", format = "html", table.attr = "style='width:30%;'")
+
+```
+
+$~$
+
+-   Classification Accuracy : `r mean( b.test$y == 1*(fit.glm > 0.5) )`
+
+-   Prediction Error rate : `r mean( b.test$y != 1*(fit.glm > 0.5) )` 
+
+$~$
+
+Our model has very good accuracy rate of `r round(mean( b.test$y == 1*(fit.glm > 0.5))*100,2)`%, with following information is presented in our confusion matrix:
+
+-   The actual number of Genuine banknote in our test data is :`r conf.matrix[1]` + `r conf.matrix[2]` = `r conf.matrix[1]+conf.matrix[2]`
+
+-   The actual number of Forged banknote in our test data is :`r conf.matrix[3]` + `r conf.matrix[4]` = `r conf.matrix[3]+conf.matrix[4]`
+
+-   The correct prediction is: `r conf.matrix[2]` + `r conf.matrix[3]` = `r conf.matrix[2]+conf.matrix[3]`
+
+-   More errors were made by predicting Genuine banknote as Forged banknote ( `r conf.matrix[1]` cases) than predict Forged banknote as Genuine (`r conf.matrix[4]` cases)
+
+$~$$~$
+
+**If we using different** $\theta$ **value like** $\theta=0.3$ **and** $\theta=0.6$**, the model may suite for difference purposes**
+
+```{r, echo = FALSE}
+
+conf.matrix3 = table(ifelse( fit.glm > 0.3, "**Forged**", "**Genuine**"),b.test$y)
+colnames(conf.matrix3) = c("Genuine","Forged")
+
+knitr::kable(conf.matrix3, escape = FALSE, booktabs = TRUE,caption = "Confusion matrix - threshold = 0.3",  format = "html", table.attr = "style='width:30%;'")
+
+```
+
+$~$
+
+-   Classification Accuracy : `r mean( b.test$y == 1*(fit.glm > 0.3) )`
+
+-   Prediction Error rate : `r mean( b.test$y != 1*(fit.glm > 0.3) )`
+
+$~$ 
+
+Our model has very good accuracy rate of `r round(mean( b.test$y == 1*(fit.glm > 0.3))*100,2)`%, with following information is presented in our confusion matrix:
+
+-   The actual number of Genuine banknote in our test data is :`r conf.matrix3[1]` + `r conf.matrix3[2]` = `r conf.matrix3[1]+conf.matrix3[2]`
+
+-   The actual number of Forged banknote in our test data is :`r conf.matrix3[3]` + `r conf.matrix3[4]` = `r conf.matrix3[3]+conf.matrix3[4]`
+
+-   The correct prediction is: `r conf.matrix3[2]` + `r conf.matrix3[3]` = `r conf.matrix3[2]+conf.matrix3[3]`
+
+-   Errors were made by predicting Genuine banknote as Forged banknote ( `r conf.matrix3[1]` cases) was significant higher than the predicting Forged banknote as Genuine (`r conf.matrix3[4]` cases)
+
+$~$
+
+```{r, echo = FALSE}
+
+conf.matrix6 = table(ifelse( fit.glm > 0.6, "**Forged**", "**Genuine**"),b.test$y)
+colnames(conf.matrix6) = c("Genuine","Forged")
+
+knitr::kable(conf.matrix6, escape = FALSE, booktabs = TRUE,caption = "Confusion matrix - threshold = 0.6", format = "html", table.attr = "style='width:30%;'")
+
+```
+
+$~$
+
+-   Classification Accuracy : `r mean( b.test$y == 1*(fit.glm > 0.6) )`
+
+-   Prediction Error rate : `r mean( b.test$y != 1*(fit.glm > 0.6) )` 
+
+$~$
+
+Our model has very good accuracy rate of `r round(mean( b.test$y == 1*(fit.glm > 0.6))*100,2)`%, with following information is presented in our confusion matrix:
+
+-   The actual number of Genuine banknote in our test data is :`r conf.matrix6[1]` + `r conf.matrix6[2]` = `r conf.matrix6[1]+conf.matrix6[2]`
+
+-   The actual number of Forged banknote in our test data is :`r conf.matrix6[3]` + `r conf.matrix6[4]` = `r conf.matrix6[3]+conf.matrix6[4]`
+
+-   The correct prediction is: `r conf.matrix6[2]` + `r conf.matrix6[3]` = `r conf.matrix6[2]+conf.matrix6[3]`
+
+-   More errors were made by predicting Forged banknote as Genuine (`r conf.matrix6[4]` cases) than predict Genuine banknote as Forged banknote ( `r conf.matrix6[1]` cases)
+
+$~$ 
+
+Follow the result obtained above, we can see the most highlighted feature of the model with $\theta=0.3$ is minimizing the error made by predicting Forged banknote as Genuine. So in the situation, when we try to reduce as much as possible the slipping through of Forged banknote, and accept the trade-off of high percentage of wrong detection Genuine banknote as Forged banknote, then the $\theta=0.3$ model will be preferred.
+
+$~$$~$
+
+
+# Linear Discriminant Analysis (LDA)
+
+First, we fit an LDA model to predict the probability of a banknote being forged using the predictors x1 and x3.
+
+```{r,echo = FALSE,comment=NA,results='hide'}
+b_train = read.csv('BankTrain.csv')
+b_test = read.csv('BankTest.csv')
+lda.fit=lda(y~x1+x3, b_train)
+lda.fit
+```
+
+$~$
+
+The confusion matrix for the testing set is showed in the table below
+
+```{r,echo = FALSE}
+lda.predicted.test = predict(lda.fit, b_test)
+lda.conf.matrix = table(ifelse(lda.predicted.test$class == 0, "**Predicted Genuine**", "**Predicted Forged**"), b_test$y)
+
+colnames(lda.conf.matrix) = c("Actual Genuine","Actual Forged")
+knitr::kable(lda.conf.matrix, escape = FALSE, booktabs = TRUE,caption = "LDA Confusion matrix", format = "html", table.attr = "style='width:50%;'")
+
+```
+
+$~$
+
+-   Classification Accuracy : `r mean(b_test$y == lda.predicted.test$class)`
+
+$~$$~$
+
+# Quadratic Discriminant Analysis (QDA)
+
+
+First, we fit an QDA model to predict the probability of a banknote being forged using the predictors x1 and x3.
+
+```{r,echo = FALSE,comment=NA,results='hide'}
+qda.fit=qda(y~x1+x3, b_train)
+qda.fit
+```
+$~$
+
+The confusion matrix for the testing set from Question 4 of Assignment 1 is showed in the table below
+
+```{r,echo = FALSE}
+qda.predicted.test = predict(qda.fit, b_test)
+qda.conf.matrix = table(ifelse(qda.predicted.test$class == 0, "**Predicted Genuine**", "**Predicted Forged**"), b_test$y)
+
+colnames(qda.conf.matrix) = c("Actual Genuine","Actual Forged")
+knitr::kable(qda.conf.matrix, escape = FALSE, booktabs = TRUE,caption = "QDA Confusion matrix", format = "html", table.attr = "style='width:50%;'")
+
+```
+$~$
+
+-   Classification Accuracy : `r mean(b_test$y == qda.predicted.test$class)`
+
+$~$$~$
+
+Since the Quadratic Discriminant Analysis (QDA) is a more flexible classifier than Linear Discriminant Analysis (LDA), the result clearly show the better in the prediction accuracy of QDA (`r mean(b_test$y == qda.predicted.test$class)`) in compared to `r mean(b_test$y == lda.predicted.test$class)` of LDA. Moreover, the QDA also perform better than LDA in all the classification metrics as shown in the table above.
+
+```{r,echo = FALSE}
+lda.sensitivity = lda.conf.matrix[3]/(lda.conf.matrix[3]+lda.conf.matrix[4])
+lda.specificity = lda.conf.matrix[2]/(lda.conf.matrix[1]+lda.conf.matrix[2])
+lda.fpr = lda.conf.matrix[1]/(lda.conf.matrix[1]+lda.conf.matrix[2])
+lda.precision = lda.conf.matrix[3]/(lda.conf.matrix[1]+lda.conf.matrix[3])
+
+qda.sensitivity = qda.conf.matrix[3]/(qda.conf.matrix[3]+qda.conf.matrix[4])
+qda.specificity = qda.conf.matrix[2]/(qda.conf.matrix[1]+qda.conf.matrix[2])
+qda.fpr = qda.conf.matrix[1]/(qda.conf.matrix[1]+qda.conf.matrix[2])
+qda.precision = qda.conf.matrix[3]/(qda.conf.matrix[1]+qda.conf.matrix[3])
+```
+
+|                     | LDA                                            | QDA                                            |
+|------------------|---------------------------|---------------------------|
+| Prediction Accuracy | `r mean(b_test$y == lda.predicted.test$class)` | `r mean(b_test$y == qda.predicted.test$class)` |
+| Sensitivity         | `r lda.sensitivity`                            | `r qda.sensitivity`                            |
+| Specificity         | `r lda.specificity`                            | `r qda.specificity`                            |
+| False Positive Rate | `r lda.fpr`                                    | `r qda.fpr`                                    |
+| Precision           | `r lda.precision`                              | `r qda.precision`                              |
+
+: Confusion matrix classification metrics of LDA and QDA
+
+$~$ $~$
+
+### Compare between three methods Logistic Regression (**$\theta=0.5$**), LDA and QDA
+
+We can first compute the confusion matrix of the Logistic Regression.
+
+```{r,echo = FALSE}
+
+train.model = glm(y~x1+x3,family=binomial,data=b_train)
+glm.fit = predict(train.model, b_test, type="response")
+glm.conf.matrix = table(ifelse( glm.fit > 0.5, "**Predicted Forged**", "**Predicted Genuine**"),b_test$y)
+colnames(glm.conf.matrix) = c("Actual Genuine","Actual Forged")
+
+knitr::kable(glm.conf.matrix, escape = FALSE, booktabs = TRUE,caption = "GLM Confusion matrix - threshold = 0.5",format = "html", table.attr = "style='width:50%;'")
+
+
+```
+$~$
+
+-   Classification Accuracy : `r mean( b_test$y == 1*(glm.fit > 0.5) )`
+
+$~$
+```{r,echo = FALSE}
+glm.sensitivity = glm.conf.matrix[3]/(glm.conf.matrix[3]+glm.conf.matrix[4])
+glm.specificity = glm.conf.matrix[2]/(glm.conf.matrix[1]+glm.conf.matrix[2])
+glm.fpr = glm.conf.matrix[1]/(glm.conf.matrix[1]+glm.conf.matrix[2])
+glm.precision = glm.conf.matrix[3]/(glm.conf.matrix[1]+glm.conf.matrix[3])
+
+```
+$~$
+
+We then look at the classification metrics of these three, shown in the table below:
+
+|                     | Logistic Regression                       | LDA                                            | QDA                                            |
+|------------------|------------------|------------------|------------------|
+| Prediction Accuracy | `r mean( b_test$y == 1*(glm.fit > 0.5) )` | `r mean(b_test$y == lda.predicted.test$class)` | `r mean(b_test$y == qda.predicted.test$class)` |
+| Sensitivity         | `r glm.sensitivity`                       | `r lda.sensitivity`                            | `r qda.sensitivity`                            |
+| Specificity         | `r glm.specificity`                       | `r lda.specificity`                            | `r qda.specificity`                            |
+| False Positive Rate | `r glm.fpr`                               | `r lda.fpr`                                    | `r qda.fpr`                                    |
+| Precision           | `r glm.precision`                         | `r lda.precision`                              | `r qda.precision`                              |
+
+: Confusion matrix classification metrics of Logistic Regression, LDA and QDA
+
+$~$ $~$
+
+We then plot Receiver Operating Characteristic (ROC) Curves of these three
+
+```{r,echo = FALSE,out.width="90%",fig.align = 'center'}
+
+p1 = prediction(glm.fit, b_test$y) %>% performance(measure = "tpr", x.measure = "fpr")
+plot(p1,col = "red", main = "ROC curves of Logistic Regression, LDA and QDA")
+p2 = prediction(lda.predicted.test$posterior[,2], b_test$y) %>% performance(measure = "tpr", x.measure = "fpr")
+plot(p2,add = TRUE,col ="green")
+p3 = prediction(qda.predicted.test$posterior[,2], b_test$y) %>% performance(measure = "tpr", x.measure = "fpr")
+plot(p3,add = TRUE,col = "blue")
+legend("bottomright",
+       legend = c("Logistic Regression", "Quadratic Discriminant", "Linear Discriminant"),
+       col = c("red","green","blue"),
+       lwd = 1,
+       text.col = "black",
+       horiz = FALSE)
+```
+$~$
+
+From ROC curves, we then compute Area Under the Curve (AUC) of these ROC Curves
+
+$~$
+
+```{r,echo = FALSE}
+auc.glm = prediction(glm.fit, b_test$y) %>%
+  performance(measure = "auc") %>%
+  .@y.values
+
+auc.lda = prediction(lda.predicted.test$posterior[,2], b_test$y) %>%
+  performance(measure = "auc") %>%
+  .@y.values
+
+auc.qda = prediction(qda.predicted.test$posterior[,2], b_test$y) %>%
+  performance(measure = "auc") %>%
+  .@y.values
+
+```
+
+|       | Logistic Regression                 | LDA                                 | QDA                                 |
+|-------------------|------------------|------------------|------------------|
+| (AUC) | `r sprintf(auc.glm, fmt = '%#.7f')` | `r sprintf(auc.lda, fmt = '%#.7f')` | `r sprintf(auc.qda, fmt = '%#.7f')` |
+
+: Area Under the Curve of Logistic Regression ROC, LDA ROC and QDA ROC.
+
+$~$
+
+From all the comparison metrics computed above, we can see, the QDA performance is better than Logistic Regression, and LDA. The QDA has the highest prediction accuracy, and better performance in all evaluation metrics, including Sensitivity, Specificity, False Positive Rate, Precision and AUC. Between Logistic Regression and LDA, LDA seems to perform slightly better than Logistic Regression in general. However, the Logistic Regression specificity (`r glm.specificity`) is better than LDA specificity (`r lda.specificity`).
+
+$~$
+
+In this problem, when we are focusing on detecting Forged Banknote, **the QDA method will be recommended**. Since it has better performance in all metrics, and especially its sensitivity is the highest in all evaluated methods. We focus on sensitivity (calculated by Forged Banknotes predicted as Forged Banknotes divided by sum of Forged Banknotes predicted as Forged Banknotes and Forged Banknotes predicted as Genuine Banknotes) because as the problem requirement, genuine banknotes that are flagged as possible forged are more acceptable than forged banknote that are not detected.
