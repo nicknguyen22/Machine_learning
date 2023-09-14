@@ -1,0 +1,135 @@
+---
+title: 'Parkinson’s disease UPDRS analysis with LASSO Regression '
+author: "Hieu Nguyen"
+---
+
+```{r,echo=FALSE,warning=FALSE}
+library(glmnet)
+library(ggplot2)
+set.seed(999999,sample.kind="Rounding")
+```
+
+\
+
+In this notebook, we are going to work with a Parkinsons Disease dataset, which contains information on 42 patients with Parkinson’s disease. The outcome of interest is UPDRS, which is the total unified Parkinson’s disease rating scale. The first 96 features, X1–X96, have been derived from audio recordings of speech tests while feature X97 is already known to be informative for UPDRS.
+\
+
+We calculate the estimated coefficients to give a measure of the relative importance of the features in the fitted model.The dataset will be split into a training set with 30 patients and a test set with 12 patients 
+
+\
+
+```{r,comment=NA}
+parData = read.csv("parkinsons.csv",header=TRUE)
+X = model.matrix(UPDRS ~., parData)[,-1]
+X = scale(X)[,-1]
+y = parData$UPDRS
+trainIdx = sample(1:nrow(X), 30)
+testIdx = -trainIdx
+```
+
+\
+
+#### First we attempt to fit our training data to the linear regression model, as the baseline, and we get the result as follow
+
+```{r,comment=NA}
+options(width = 100)
+lm(y[trainIdx] ~ X[trainIdx,])
+```
+\
+The OLS regression cannot fit the training data and returns errors. So, the linear regression model will not be useful in this case. 
+The OLS regression becomes unworkable and returns an error like above when $X^TX$ is a singular matrix and its inverse doesn’t exist. This happens when the number of predictors, d, is more than the number of observations, N, as in our case are where d = 97 and N =30.
+\
+\
+
+#### Now use the LASSO to fit the training data, using leave-one- out cross-validation to find the tuning parameter $\lambda$, which means nfolds=30. Besides, the to set grid = 10^seq(3,- 1,100) and thresh=1e-10. 
+
+\
+First, we will train our LASSO model 
+
+```{r,comment=NA}
+grid = 10^seq(3,-1,length = 100)
+lassoModel = glmnet(X[trainIdx,],
+                    y[trainIdx],
+                    alpha=1,
+                    lambda=grid,
+                    thresh=1e-10)
+```
+
+Then we will find the optimal lambda via Cross validation on the training data.
+
+```{r,comment=NA}
+cvResult = cv.glmnet(X[trainIdx,],
+                    y[trainIdx],
+                    alpha=1,
+                    lambda=grid,
+                    nfolds=30,
+                    thresh=1e-10,
+                    grouped = F)
+paste("The optimal lambda is",cvResult$lambda.min)
+bestLamd= cvResult$lambda.min
+```
+
+The Cross validation Error can be ploted against Log($\lambda$) as below.
+
+```{r}
+plot(cvResult)
+
+```
+
+The test error then can be computed with the optimal $\lambda$ of `r bestLamd`
+
+```{r,comment=NA}
+lassoPred = predict(lassoModel, s=bestLamd, newx=X[testIdx,])
+paste("The MSE is",mean((lassoPred - y[testIdx])^2))
+```
+\
+
+With the optimal $\lambda$, we are able to compute the coefficients of all features, and define what features are selected under this model (The features with coefficient reduced to 0 will not be shown)
+
+```{r,comment=NA}
+lassoCoef= predict(cvResult, type = "coefficients", s=bestLamd)
+lasCoef = lassoCoef[lassoCoef[,1]!=0,]
+lasCoef
+```
+
+\
+
+So, our final model for the UPDRS is the model with $\lambda$ = `r bestLamd`: 
+
+UPDRS = `r round(lasCoef[1],3)` + `r round(lasCoef[2],3)` X95 + `r round(lasCoef[3],3)` X97
+
+\
+
+Lasso is a form of dimension reduction methods with variable selection, which aims to produces simpler and more interpretable models that involve only a subset of the predictors. In our case, only 2 features X95 and X97 are used.  Our prediction now is based on 2 variables rather than 97 variables. However, in our dataset the response UPDRS is a function of 97 predictors and the Lasso could under fit with less than ideal number of predictors, especially when we only have 30 observation for training the model. This could lead to poor performance on unseen data.
+
+\
+\
+
+#### If we do a different random split into training and test sets, and fit the LASSO model again as below
+
+```{r,warning=FALSE,comment=NA}
+seeds = c(538,239,275)
+for (seed in seeds)
+{
+set.seed(seed,sample.kind="Rounding")
+trainIdx1 = sample(1:nrow(X), 30)
+testIdx1 = -trainIdx1
+
+cvResult1 = cv.glmnet(X[trainIdx1,],
+                    y[trainIdx1],
+                    alpha=1,
+                    lambda=grid,
+                    nfolds=30,
+                    thresh=1e-10,
+                    grouped = F)
+
+bestLamd1= cvResult1$lambda.min
+
+lassoCoef1= predict(cvResult1, type = "coefficients", s=bestLamd1)
+cat("\n","The selected feature for RNG seed:",seed,"\n")
+print(lassoCoef1[lassoCoef1[,1]!=0,])
+}
+```
+
+\
+As we change the train dataset with a different random split dataset, only the feature X97, which has already known to be informative for UPDRS, has remained constant in the list of selected feature(s). The other features change depending on the training dataset.
