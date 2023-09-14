@@ -1,0 +1,490 @@
+---
+title: Evaluating the Effectiveness of Backward Regression, Stepwise Regression, LASSO
+  Regression, and Ridge Regression for Comparative Analysis using a Residential Building
+  Dataset.
+author: "Hieu Nguyen"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE,
+                      message=FALSE, cache = TRUE)
+set.seed(999999, sample.kind='Rounding')
+options(tinytex.verbose = TRUE)
+```
+
+```{r,echo=FALSE,warning=FALSE}
+library(glmnet)
+library(ggplot2)
+library(corrplot)
+library(MASS)
+```
+
+\
+The choice of which regression technique to use depends on the specific characteristics of your data and the goals of your analysis.
+
+\
+
+**Backward Regression:**
+
+-   Use when you have a large number of predictors and want to simplify the model by removing irrelevant variables.
+
+-   Start with a model that includes all predictors and iteratively remove variables that are not statistically significant.
+
+\
+
+**Forward Regression:**
+
+-   Employ when you have a small number of predictors and want to build a model by adding variables one at a time.
+
+-   Start with an empty model and iteratively add variables that improve model fit or predictive performance.
+
+\
+
+**Stepwise Regression (combination of forward and backward):**
+
+-   Useful when you want to both add and remove predictors from the model.
+
+-   Automatically selects variables to add or remove based on statistical criteria, such as p-values or information criteria like AIC or BIC.
+
+\
+
+**LASSO Regression (Least Absolute Shrinkage and Selection Operator):**
+
+-   Appropriate when dealing with high-dimensional data with potentially many irrelevant predictors.
+
+-   LASSO performs variable selection and can shrink coefficients toward zero, effectively reducing the number of predictors in the model.
+
+-   It's particularly useful when you suspect that many predictors are weakly related to the response variable.
+
+\
+
+**Ridge Regression:**
+
+-   Suitable when multicollinearity (high correlation between predictors) is a concern.
+
+-   Ridge regression adds a penalty term to the regression coefficients, which can help reduce ulticollinearity and provide more stable estimates.
+
+-   It's often used when you want to keep all predictors in the model but reduce their influence.
+
+\
+
+In practice, the choice between these techniques should also consider factors such as the interpretability of the model, computational resources, and the specific goals of your analysis. You may need to perform cross-validation or other model evaluation techniques to determine which regression method performs best for your particular dataset and objectives.
+    
+\
+
+This notebook will employ the Residential Building Dataset to assess performance using various algorithms.The dataset can be found at <https://archive.ics.uci.edu/ml/datasets/Residential+Building+Data+Set>.
+
+\
+
+#### We first analyse the correlation relationship between the variables.
+
+```{r fig1, fig.height = 6, fig.width = 6, fig.align='center'}
+# PROJECT DATES VARIABLES
+
+load("Residen.RData")
+dates_variables = Residen[,c(1:4)]
+cor_date = cor(dates_variables)
+corrplot.mixed(cor_date, is.corr = F, na.label=" ", tl.cex = 0.5, number.cex=0.9) 
+```
+
+$~$
+
+```{r fig2, fig.height = 6, fig.width = 6, fig.align='center'}
+# PHYSICAL AND FINANCIAL VARIABLES
+
+phys_variables = Residen[,c(5:12)]
+cor_phys = cor(phys_variables)
+corrplot.mixed(cor_phys, is.corr = F, na.label=" ", tl.cex = 0.7, number.cex=0.8)
+```
+
+$~$
+
+```{r fig3, fig.height = 8, fig.width = 8, fig.align='center'}
+# ECONOMIC VARIABLES LAG1
+
+lag1_variables = Residen[,c(13:31)]
+cor_lag1 = cor(lag1_variables)
+corrplot.mixed(cor_lag1, is.corr = F, na.label=" ", tl.cex = 0.65, number.cex=0.55)
+```
+
+$~$
+
+```{r fig4, fig.height = 8, fig.width = 8, fig.align='center'}
+# ECONOMIC VARIABLES LAG2 
+
+lag2_variables = Residen[,c(32:50)]
+cor_lag2 = cor(lag2_variables)
+corrplot.mixed(cor_lag2, is.corr = F, na.label=" ", tl.cex = 0.65, number.cex=0.55)
+```
+
+$~$
+
+```{r fig5, fig.height = 8, fig.width = 8, fig.align='center'}
+# ECONOMIC VARIABLES LAG3
+
+lag3_variables = Residen[,c(51:69)]
+cor_lag3 = cor(lag3_variables)
+corrplot.mixed(cor_lag3, is.corr = F, na.label=" ", tl.cex = 0.65, number.cex=0.55)
+```
+
+$~$
+
+```{r fig6, fig.height = 8, fig.width = 8, fig.align='center'}
+# ECONOMIC VARIABLES LAG4
+
+lag4_variables = Residen[,c(70:88)]
+cor_lag4 = cor(lag4_variables)
+corrplot.mixed(cor_lag4, is.corr = F, na.label=" ", tl.cex = 0.65, number.cex=0.55) 
+```
+
+$~$
+
+```{r fig7, fig.height = 8, fig.width = 8, fig.align='center'}
+# ECONOMIC VARIABLES LAG5
+
+lag5_variables = Residen[,c(89:107)]
+cor_lag5 = cor(lag5_variables)
+corrplot.mixed(cor_lag5, is.corr = F, na.label=" ", tl.cex = 0.65, number.cex=0.55) 
+```
+
+$~$
+
+Graphs shown above show high correlation between many of the variables. Additionally the function below was used to check which variables have correlation above 0.95.
+
+$~$
+
+```{r fig8, fig.height = 8, fig.width = 8, fig.align='center'}
+corr_function <- function(data=Residen,sig=0.95){
+  corr <- cor(data)
+  corr[lower.tri(corr,diag=TRUE)] <- NA   #prepare to drop duplicates and correlations of 1     
+  corr[corr == 1] <- NA   #drop perfect correlations
+  corr <- as.data.frame(as.table(corr))  #turn into a 3-column table
+  corr <- na.omit(corr)   #remove the NA values from above 
+  corr <- subset(corr, abs(Freq) > sig)   #select values above 0.95
+  corr <- corr[order(-abs(corr$Freq)),]   #sort by highest correlation
+  mtx_corr <- reshape2::acast(corr, Var1~Var2, value.var="Freq")   #turn corr back into matrix in 
+  #order to plot with corrplot
+  corrplot(mtx_corr, is.corr=FALSE, tl.col="black", na.label=" ", tl.cex = 0.5)  
+  #plot correlations visually
+}
+corr_function()
+```
+
+#### We then try to fit linear regression model to explain the "actual sales price" (V104) in terms of the of the other variables excluding the variable "actual construction costs" (V105)
+
+```{r,comment=NA}
+set.seed(999999)
+row.number <- sample(1:nrow(Residen), 0.8*nrow(Residen))
+train <- Residen[row.number,]
+test <- Residen[-row.number,]
+
+# Linear regression using the training dataset
+lin.reg <- lm(V104~.-V105, data=train)
+summary(lin.reg)
+```
+
+$~$
+
+\
+Summary returns error with 34 coefficients not defined due to singularities. This suggests multicollinearity in our dataset, which we have also seen when plotting correlation between variables.\
+\
+For the rest of variables, we first look at the coefficient t-value as it is a measure of how many standard deviations our coefficient estimate is away from zero. If it is far from zero, then we could reject the null hypothesis and declare a relationship between that variable and V104 (actual sales price) exists. Only COMPLETION YEAR (11.160), COMPLETION QUARTER (7.295), V8 (68.763), V3 (-3.115), V2 (2.544) have relationship with V104. The rest has coefficient close to zero, which means no relationship to V104.\
+\
+The Coefficient - Pr(\>t) or p-value indicates the likelihood we will observe a relationship between the predictor (V104) and response variables due to chance. Smaller value shows the low probability, while the value closer to 1 shows high probability. Again, only COMPLETION YEAR, COMPLETION QUARTER, V8, V3, and V2 have low p-value \<0.01, the other variables have the p-value close to 1.\
+\
+The R^2^ and adjusted R^2^ are very high (`r round(summary(lin.reg)$r.squared,5)` and `r round(summary(lin.reg)$adj.r.squared,5)` respectively), despite 34 variables not defined and of the remaining only 5 have significant p values. However, the high value of R^2^ and adjusted R^2^ may be caused by the co-integration of variables.\
+
+$~$
+
+#### Fit the dataset to Backwards regression using AIC
+
+$~$
+
+```{r,comment=NA}
+# BACKWARDS REGRESSION USING AIC
+
+set.seed(999999)
+start.time <- Sys.time()
+bck.reg <- stepAIC(lin.reg, direction="backward", trace=FALSE)
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+summary(bck.reg)
+```
+
+\
+
+```{r,comment=NA}
+# HOLDOUT MSE FOR BACKWARDS SELECTION
+
+set.seed(999999)
+bck.pred <- predict(bck.reg, newdata = test)
+mse.back <- mean((test$V104 - bck.pred)^2)
+c(MSE = mse.back, R2 = summary(bck.reg)$r.squared)
+```
+
+\
+
+```{r,comment=NA}
+# CROSS VALIDATION MSE FOR BACKWARDS SELECTION
+
+set.seed(999999)
+predict.regsubsets <- function(object,newdata,id,...){
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form,newdata)
+  coefi <- coef(object, id=id)
+  xvars <- names(coefi)
+  mat[,xvars]%*%coefi
+}
+
+k <- 10
+folds <- sample(1:k, nrow(Residen), replace=TRUE)
+cv.errors <- matrix(NA, k)
+for(j in 1:k){
+  model.full <- lm(V104~. -V105, data=Residen[folds!=j,])
+  best.fit <- stepAIC(model.full, direction="backward",
+                      trace=FALSE,)
+  pred <- predict(best.fit, Residen[folds==j,], id = j)
+  cv.errors[j] <- mean( (Residen$V104[folds==j]-pred)^2)
+}
+mean.cv.errors.bck <- apply(cv.errors, 2, mean)
+mean.cv.errors.bck
+```
+
+\
+
+#### Fit the dataset to Stepwise regression using AIC
+
+\
+
+```{r,comment=NA}
+# STEPWISE REGRESSION USING AIC
+
+set.seed(999999)
+model.null <- lm(V104~1, data=train)
+
+start.time2 <- Sys.time()
+stp.reg <- stepAIC(model.null, direction="both", scope=list(upper=lin.reg, lower=model.null), 
+                   trace=FALSE)
+end.time2 <- Sys.time()
+time.taken2 <- end.time2 - start.time2
+time.taken2
+summary(stp.reg)
+```
+
+\
+
+```{r,comment=NA}
+# HOLDOUT MSE FOR STEPWISE SELECTION
+
+set.seed(999999)
+stp.pred <- predict(stp.reg, newdata = test)
+mse.step <- mean((test$V104 - stp.pred)^2)
+c(MSE = mse.step, R2 = summary(stp.reg)$r.squared)
+```
+
+\
+
+```{r,comment=NA}
+# CROSS VALIDATION MSE FOR STEPWISE SELECTION
+
+set.seed(999999)
+k <- 10
+folds <- sample(1:k, nrow(Residen), replace=TRUE)
+cv.errors <- matrix(NA, k)
+for(j in 1:k){
+  model.full <- lm(V104~. -V105, data=Residen[folds!=j,])
+  model.null <- lm(V104~1, data=Residen[folds!=j,])
+  best.fit <- stepAIC(model.null, direction="both",
+                      trace=FALSE,
+                      scope=list(upper=model.full, lower=model.null))
+  pred <- predict(best.fit, Residen[folds==j,], id = j)
+  cv.errors[j] <- mean( (Residen$V104[folds==j]-pred)^2)
+}
+mean.cv.error.stp <- apply(cv.errors, 2, mean)
+mean.cv.error.stp
+```
+
+
+
+\
+Backwards selection model had R^2^ of `r round(summary(bck.reg)$r.squared,5)` and adjusted R^2^ of `r round(summary(bck.reg)$adj.r.squared,5)`. It had 41 explanatory variables. Computation time was `r round(time.taken,3)` secs. Holdout MSE for backwards selection was `r round(mse.back,5)`. Cross validation MSE was `r round(mean.cv.errors.bck,5)`.
+
+\
+Stepwise selection model had R^2^ of `r round(summary(stp.reg)$r.squared,5)` and adjusted R^2^ of `r round(summary(stp.reg)$adj.r.squared,5)`. It had only 15 explanatory variables. Computation time was `r round(time.taken2,3)` secs. Holdout MSE for stepwise selection was `r round(mse.step,5)`. Cross validation MSE was `r round(mean.cv.error.stp,5)`.
+
+
+\
+Stepwise regression in this case was the better model, with lower MSE, higher R^2^. It was also more parsimonious i.e. simpler model with great explanatory predictive power, since it was only using 15 variables. Additionally it was faster to compute.
+
+$~$
+
+#### Ridge Regression
+
+\
+
+```{r,comment=NA}
+# Prepare the model matrix X, response variable and lambda values
+  
+set.seed(999999)
+X <- model.matrix(V104 ~.-V105, Residen)[,-1]
+y <- Residen$V104
+
+# create grid of lambda values
+grid <- 10^seq(10, -2, length=100)
+
+```
+
+
+\
+*Holdout MSE in Ridge regression*
+
+
+```{r, comment=NA}
+# HOLDOUT MSE IN RIDGE REGRESSION
+
+set.seed(999999)
+cv.out.ridge <- cv.glmnet(X[row.number,],
+                    y[row.number],
+                    alpha=0,
+                    lambda=grid,
+                    nfolds=10,
+                    thresh=1e-12)
+cv.out.ridge$lambda.min
+
+plot(cv.out.ridge)
+
+# Compute the test error:
+bestlam.ridge <- cv.out.ridge$lambda.min
+ridge.pred <- predict(cv.out.ridge, s=bestlam.ridge, newx=X[-row.number,])
+ridge.mse = mean((ridge.pred - y[-row.number])^2)
+ridge.mse
+
+# Refit the ridge regression model on the full dataset 
+# using lambda min. Also, calculate computation time.
+start.time3 <- Sys.time()
+out = glmnet(X, y, alpha=0, lambda=grid, thresh=1e-12)
+predict(out, type="coefficients", s=bestlam.ridge)
+end.time3 <- Sys.time()
+time.taken3 <- end.time3 - start.time3
+time.taken3
+```
+
+The smallest holdout MSE is `r ridge.mse` for best lambda = `r bestlam.ridge`.
+
+\
+
+```{r,comment=NA}
+# CROSS VALIDATION FOR RIDGE REGRESSION
+set.seed(999999)
+
+# define a predict function.
+predict.regsubsets <- function(object,newdata,id,...){
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form,newdata)
+  coefi <- coef(object, id=id)
+  xvars <- names(coefi)
+  mat[,xvars]%*%coefi
+}
+
+k <- 10
+folds <- sample(1:k, nrow(Residen), replace=TRUE)
+cv.errors <- matrix(NA, k)
+for(j in 1:k){
+  cv.out.ridge <-  cv.glmnet(X[folds!=j,],
+                    y[folds!=j],
+                    alpha=0,
+                    lambda=grid,
+                    nfolds=10,
+                    thresh=1e-12)
+  bestlam.ridge <- cv.out.ridge$lambda.min
+  model.ridge <- glmnet(X[folds!=j,], y[folds!=j], alpha=0, lambda=bestlam.ridge, thresh=1e-12)
+  pred <- predict(model.ridge, s=bestlam.ridge, newx = X[folds==j,])
+  cv.errors[j] <- mean((y[folds==j]-pred)^2)
+}
+mean.cv.errors.ridge <- apply(cv.errors, 2, mean)
+mean.cv.errors.ridge
+cv.out.ridge$lambda.min
+```
+
+The best lambda chosen by cross validation is `r bestlam.ridge`, the cross validation MSE is `r mean.cv.errors.ridge`.
+
+\
+
+#### LASSO Regression
+
+\
+```{r,comment=NA}
+# HOLDOUT MSE IN LASSO REGRESSION
+set.seed(999999)
+cv.out.lasso <- cv.glmnet(X[row.number,],
+                    y[row.number],
+                    alpha=1,
+                    lambda=grid,
+                    nfolds=10,
+                    thresh=1e-12)
+cv.out.lasso$lambda.min
+
+plot(cv.out.lasso)
+
+# Compute the test error:
+bestlam.lasso <- cv.out.lasso$lambda.min
+lasso.pred <- predict(cv.out.lasso, s=bestlam.lasso, newx=X[-row.number,])
+lasso.mse = mean((lasso.pred - y[-row.number])^2)
+lasso.mse
+
+# Refit on the full dataset using lambda min.Also, calculate computation time.
+start.time4 <- Sys.time()
+out = glmnet(X, y, alpha=1, lambda=grid, thresh=1e-12)
+# small lambda, give the smallest MSE, all coefficients non-zero.
+predict(out, type="coefficients", s=bestlam.lasso)
+end.time4 <- Sys.time()
+time.taken4 <- end.time4 - start.time4
+time.taken4
+```
+
+The smallest holdout MSE is `r lasso.mse` for best lambda = `r bestlam.lasso`.\
+
+```{r, comment= NA}
+# CROSS VALIDATION FOR LASSO REGRESSION
+
+set.seed(999999)
+
+k <- 10
+folds <- sample(1:k, nrow(Residen), replace=TRUE)
+cv.errors <- matrix(NA, k)
+for(j in 1:k){
+  cv.out.lasso <-  cv.glmnet(X[folds!=j,],
+                    y[folds!=j],
+                    alpha=1,
+                    lambda=grid,
+                    nfolds=10,
+                    thresh=1e-12)
+  bestlam.lasso <- cv.out.lasso$lambda.min
+  model.lasso <- glmnet(X[folds!=j,], y[folds!=j], alpha=1, lambda=bestlam.lasso, thresh=1e-12)
+  pred <- predict(model.lasso, s=bestlam.lasso, newx = X[folds==j,])
+  cv.errors[j] <- mean((y[folds==j]-pred)^2)
+}
+mean.cv.errors.lasso <- apply(cv.errors, 2, mean)
+mean.cv.errors.lasso
+cv.out.lasso$lambda.min
+```
+
+The best lambda chosen by cross validation is `r bestlam.lasso`, the cross validation MSE is `r mean.cv.errors.lasso`.\
+
+\
+
+#### Summary
+
+\
+
+In summary, we have:\
+Ridge regression model had 107 explanatory variables. Computation time was `r round(time.taken3,3)` secs. Holdout MSE for Ridge regression was `r round(ridge.mse,5)`. Cross validation MSE was `r round(mean.cv.errors.ridge,5)`.\
+\
+LASSO model had 22 explanatory variables. Computation time was `r round(time.taken4,3)` secs. Holdout MSE for LASSO was `r round(lasso.mse,5)`. Cross validation MSE was `r round(mean.cv.errors.lasso,5)`.\
+\
+Backwards selection model had 41 explanatory variables. Computation time was `r round(time.taken,3)` secs. Holdout MSE for backwards selection was `r round(mse.back,5)`. Cross validation MSE was `r round(mean.cv.errors.bck,5)`.\
+\
+Stepwise selection model had 15 explanatory variables. Computation time was `r round(time.taken2,3)` secs. Holdout MSE for stepwise selection was `r round(mse.step,5)`. Cross validation MSE was `r round(mean.cv.error.stp,5)`.\
+\
+From the summary above, we can see that LASSO seems to out perform other models in term of Holdout & Cross Validation MSE, and computation time. The stepwise model is simpler than the LASSO, as it only has 15 features in compare to 22 of LASSO. However, the LASSO has lower MSE, it means LASSO with 22 variables predicts unseen data better than the stepwise model. So stepwise model underfits and misses some relationships in the data.
