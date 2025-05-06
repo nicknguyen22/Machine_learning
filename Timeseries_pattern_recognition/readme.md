@@ -1,4 +1,4 @@
-Python - Time series data pattern recognitions
+# Python - Time series data pattern recognitions
 
 This notebook utilised an unsupervised machine learning technique known as time 
 series k-means clustering to identify underlying patterns within the time series data 
