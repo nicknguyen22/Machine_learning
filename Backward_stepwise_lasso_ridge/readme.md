@@ -1,4 +1,4 @@
-#R - Backward, Stepwise, Ridge and LASSO Regression Comparision 
+# R - Backward, Stepwise, Ridge and LASSO Regression Comparision 
 
 This R notebook focused on assessing the performance of four distinct regression 
 techniques - Backward Regression, Stepwise Regression, LASSO Regression, and Ridge 
