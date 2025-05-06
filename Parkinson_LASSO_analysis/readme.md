@@ -1,4 +1,4 @@
-#R - Parkinson's disease UPDRS analysis with LASSO Regression"
+# R - Parkinson's disease UPDRS analysis with LASSO Regression"
 
 This R notebook, where we delve into the analysis of Parkinson's disease UPDRS
 (Unified Parkinson's Disease Rating Scale) using LASSO Regression. In this exploration, 
