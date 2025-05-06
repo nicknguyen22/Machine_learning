@@ -1,4 +1,4 @@
-#Electricity Spot Price Prediction using TSTM (TensorFlow & Pytorch)
+# Electricity Spot Price Prediction using TSTM (TensorFlow & Pytorch)
 
 This Python notebook demonstrates the use of Long Short-Term Memory (LSTM) networks, a type of 
 recurrent neural network (RNN), to predict electricity spot prices. The notebook provides 
