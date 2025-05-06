@@ -5,4 +5,4 @@ recurrent neural network (RNN), to predict electricity spot prices. The notebook
 implementations using both TensorFlow and PyTorch, allowing users to compare and contrast the two \
 popular libraries for LSTM modeling and forecasting.
 
-Demo version on Google Colab : https://colab.research.google.com/drive/1Dl1f6UODlIjCP22Vv3YH-ZKVWUd-s3zd?usp=sharing
+Live version on Google Colab : https://colab.research.google.com/drive/1Dl1f6UODlIjCP22Vv3YH-ZKVWUd-s3zd?usp=sharing
